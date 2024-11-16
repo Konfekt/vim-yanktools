@@ -1,0 +1,482 @@
+*yanktools.txt*    yanktools     Version 0.6.0    Last change: March 29 2018
+
+YANKTOOLS - TABLE OF CONTENTS                                      *yanktools*
+==============================================================================
+
+Features.............................................|yanktools-features|
+Usage................................................|yanktools-usage|
+Unnamed register preservation........................|yanktools-unnamed|
+Other commands.......................................|yanktools-misc|
+Automatic stack......................................|yanktools-auto|
+Cycle yank stack.....................................|yanktools-cycle|
+Replace operator.....................................|yanktools-replace|
+Duplicate text.......................................|yanktools-duplicate|
+Zeta stack...........................................|yanktools-zeta|
+Repeatability........................................|yanktools-repeat|
+Control stacks.......................................|yanktools-control|
+Mappings.............................................|yanktools-mappings|
+Options..............................................|yanktools-options|
+Plugs................................................|yanktools-plugs|
+Ex commands..........................................|yanktools-ex|
+Persistance..........................................|yanktools-persistance|
+Related projects.....................................|yanktools-related|
+License..............................................|yanktools-license|
+
+
+
+FEATURES LIST                                             *yanktools-features*
+==============================================================================
+
+
+* Stacks: yanks and deletions are stored in a list, that can be cycled at
+  cursor position, back and forth, with a specific keybinding, swapping
+  elements of the stack, and keeping properties of the last paste command
+  (autoformat, paste before, etc).
+
+* Preservation of unnamed register: `c`, `C`, `x`, `X`, <del>, visual paste
+
+* Swap-&-paste: cycle among stack elements, or show them in popup/preview
+  window.
+
+* Replace operator: replace text objects with register. Repeatable.
+
+* Duplicate operator: without altering registers. Repeatable.
+
+* Zeta mode: a disposable yank stack, from which items are taken from the
+  back, and pasting them removes them from the stack as well. You can populate
+  the stack both by yanking and deleting.
+
+* Autoindent: you can toggle it, or use mappings to perform a single indented
+  paste.
+
+* Interactive paste: with preview window or |fzf-vim|
+
+* Convert yank type: convert selected register to/from blockwise.
+
+
+
+
+USAGE                                                        *yanktools-usage*
+==============================================================================
+
+The main concept is to have a dedicated stack, where yanks and deletions can
+be stored and later accessed, so to have a `clipboard history` in vim.
+
+There are two yank stacks, the `main stack`, where items are added manually,
+and a small `automatic stack`, where the most recent yanks are remembered, and
+you can transfer items from this stack to the main one.
+
+Saving yanks and deletions in the stack is the result of either:
+
+  * a yank/deletion performed with a mapping        -> `sy`, `sd`, `sc`
+  * saving a register directly in the stack         -> `yus`
+  * transferring a yank from the automatic stack    -> `yua`
+
+A main key should be defined, and this key will used for both saving into the
+stack, and for the replace operator. I recommend the 's' key.
+>
+  let g:yanktools_main_key = 's'
+
+Read |yanktools-mappings| for more details.
+
+Defined operators and their default behaviour (assuming 's' as main key):
+
+  `sy`      yank text object and save in the yank stack
+  `sd`      delete text object and save in the yank stack
+  `sc`      change text object and save in the yank stack
+
+  `s`       replace text object
+  `sq`      replace text object and reindent
+
+  `yd`      duplicate text object
+  `ydd`     duplicate same line [count] times
+  <M-d>   duplicate [count] lines
+
+Visual mode mappings:
+
+  `sy`           save yank
+  `sd`           save delete
+  `sc`           save change
+  <M-d>        duplicate
+
+Other normal mode mappings:
+
+  `]p`           paste after the cursor and autoindent
+  `[p`           paste before the cursor and autoindent
+  <M-p>        cycle the stack (+1) and paste
+  <M-P>        cycle the stack (-1) and paste
+  `]y`           cycle the stack (+1) (uses popup window if possible)
+  `[y`           cycle the stack (-1) (uses popup window if possible)
+
+Zeta mode (|yanktools-zeta|):
+
+ Normal   Visual ~
+  `yz`       `ZY`       yank
+  `dz`       `ZD`       delete
+  `zp`       `ZP`       paste
+
+Recommended settings:
+>
+  let g:yanktools_main_key = 's'
+
+  " make 'S' replace until the end of the line
+  nmap      S s$
+  nmap      Y y$
+
+
+
+
+UNNAMED REGISTER PRESERVATION                              *yanktools-unnamed*
+==============================================================================
+
+In vim, keys `c`, `x`, and related mappings cause the unnamed register to be
+overwritten, along with (usually) the small-delete register (|quote-|).
+The same happens with visual paste.
+
+By default this plugin preserves the unnamed register, restoring it to the old
+value. To disable this behaviour and keep vim default:
+>
+  let g:yanktools_preserve_unnamed = 0
+
+How is this different from this?
+>
+  nnoremap c "_c
+
+With that mapping, you wouldn't be able to specify another register, any
+change operation will redirect to the black hole register (|quote_|) in any
+case.
+
+This way, instead, you can still specify a register:
+>
+  cc     will restore the unnamed register
+  "xcc   will work normally (overwriting unnamed and "x register)
+
+
+
+
+COMMANDS                                                  *yanktools-commands*
+==============================================================================
+
+  Mappings for special commands/options use `yu`:
+
+  `yus`      save current [register] into the yank stack
+  `yua`      select an item from the automatic stack
+  `yuc`      convert [register] type (ch.wise/blockwise -> linewise, and vv.)
+  `yup`      interactive paste with preview
+  `yui`      interactive paste
+  `yu0`      set stack offset (index) to {first} + [count]
+  `yu=`      toggle autoindent
+  `yuxy`     clear yank stack
+  `yuxz`     clear zeta stack
+  `yuY`      display yank stack
+  `yuZ`      display zeta stack
+  `yu?`      print this list of mappings
+
+Note: `yu0` selects index 0, the 'first' element of the stack: that actually
+means the last inserted element. So 2`yu0` selects 'two elements before the
+last inserted'. Press `yuY` to understand better what this means.
+
+Note: with the `yuY` and `yuZ` mappings, the current yank and zeta stack will
+be displayed, and you will be able to delete an index from them, if desired.
+
+
+
+
+AUTOMATIC STACK                                               *yanktools-auto*
+==============================================================================
+
+Default mapping: `yua`
+
+As it has been said, items are saved into the main yank stack only when using
+the specific mapping, and not for every yank/delete operation. This is so that
+the main stack only contains the items that you're actually interested in.
+
+If your vim/nvim version supports the |TextYankPost| autocommand, there is an
+additional stack, that is filled automatically with every yank/delete
+operations. By default it records the last 10 operations, you can change this
+value with the option |g:yanktools_auto_stack_size|.
+
+Items in this stack can be accessed with the mapping `yua`: when you select an
+item, it writes the current unnamed register, so that it can be immediately
+pasted, and it is also transferred to the main yank stack.
+
+
+
+
+CYCLE YANK STACK                                             *yanktools-cycle*
+==============================================================================
+
+Default mappings for cycling the yank stack are <M-p> / <M-P> (forward/back).
+
+If you press one of these keys before doing a paste, it will paste the last
+entry of the stack (the last yanked item), using 'P' (paste before).
+
+If you press another paste key (p, [p, ]p...), the stack will be cycled
+keeping the properties of that paste command (before or after, move cursor at
+end, autoindent, etc).
+
+
+
+REPLACE OPERATOR                                           *yanktools-replace*
+==============================================================================
+
+By default it's mapped to `s` (`ss` to replace lines), and it accepts
+a register from which to paste. Fully repeatable in all variations.
+The variant `sq` also reindents the text object.
+
+The `replace line` command can have two different behaviours:
+
+- `ss` will replace [count] lines with a single instance of the register.
+
+- `srr` will instead replace each line in [count] with the register
+  content.
+
+         Plug                  Mapping           replaces...~
+------------------------------------------------------------------------------
+  <Plug>(Replace)              s                 text object
+  <Plug>(Replace)_             ss                [count] lines
+  <Plug>(ReplaceLines)         srr               each of [count] lines
+  <Plug>(Replace=)             sq                text object
+  <Plug>(Replace=)_            sqq               [count] lines
+
+
+
+DUPLICATE OPERATOR                                       *yanktools-duplicate*
+==============================================================================
+
+Duplicate lines, text object, or visually selected text, without overwriting
+the default register. Repeatable.
+
+         Plug                  Mapping           duplicates...~
+------------------------------------------------------------------------------
+  <Plug>(Duplicate)            yd                text object
+  <Plug>(Duplicate)_           ydd               the same line [count] times
+  <Plug>(DuplicateLines)       <M-d>             [count] lines
+  <Plug>(Duplicate)            <M-d>             visual selection
+
+
+
+
+ZETA STACK                                                    *yanktools-zeta*
+==============================================================================
+
+By postponing the `z` key to a yank/delete command, you can create a disposable
+yank stack, from which elements are taken from the bottom when pasting, and
+immediately removed. Example:
+
+    `text 1`    (yzy)
+    `text 2`    (yzy)
+    `text 3`    (yzy)
+
+the key sequence `zpzpzp` would then recreate the same sequence and consume the
+stack.
+
+Note: to paste `zp` or `zP` are used.
+Note: visual mode uses uppercase Z mappings -> `ZY`, `ZD`, `ZP`
+
+
+
+
+REPEATABILITY                                               *yanktools-repeat*
+==============================================================================
+
+All commands are repeatable, except `zeta-paste`, that is only repeatable with
+|repeat-vim|.
+
+
+
+
+CONTROL STACKS                                             *yanktools-control*
+==============================================================================
+
+By pressing `]y` or `[y`, you will move to a different position in the stack,
+the first line of which will be echoed in the command line.
+
+If your vim or nvim version supports floating popup windows, they will be used
+instead.
+                                                           *yanktools-preview*
+If you want to see a preview window, use the `yup` mapping instead. This
+window closes if you move the cursor to a different line, change tab, or paste
+the entry. If the preview window is open, `]y` or `[y` will keep use it.
+
+                                                       *yanktools-interactive*
+By pressing `yui`, you will enter interactive paste. It will use |fzf-vim| if
+available.
+
+You can list stack items by pressing `yuY` (normal stack) or `yuZ` (zeta stack).
+You can set an arbitrary index in the stack with [count]`yu0`.
+
+
+
+
+MAPPINGS                                                  *yanktools-mappings*
+==============================================================================
+
+You can override every single mapping by defining your own: each mapping is
+only assigned if the corresponding <Plug> hasn't been assigned by you.
+
+*g:yanktools_no_mappings*       Default: 0
+
+                              Completely disable mappings assignment. Plugs
+                              are still available, and you'll need to assign
+                              them by yourself.
+
+*g:yanktools_main_key*          Default: ''
+
+                              The content of this variable will be the default
+                              prefix for `yank-and-save`, `delete-and-save`
+                              and replace operators. If you don't set it,
+                              you'll have to map the plugs yourself.
+                              My personal choice is 's'.
+
+*g:yanktools_options_key*       Default: 'yu'
+
+                              This will be the prefix for special commands.
+                              If set to an empty string, commands will not be
+                              mapped.
+
+*g:yanktools_preserve_unnamed*  Default: 1
+
+                              Enable unnamed register preservation, see
+                              |yanktools-unnamed|.
+
+*g:yanktools_map_zeta*          Default: 1
+
+                              Map the plugs for the zeta stack.
+
+
+
+
+OPTIONS                                                    *yanktools-options*
+==============================================================================
+
+*g:yanktools_persistance*       Default: 0
+
+                              Enable/disable yank stack persistance across
+                              vim restarts.
+
+*g:yanktools_autoindent*        Default: 0
+
+                              If autoindentation for paste commands should be
+                              enabled by default. The command
+                              `ToggleAutoIndent` (mapping `yuai`) will toggle
+                              it on and off.
+
+*g:yanktools_move_after*        Default: 0
+
+                              If you want the cursor to always move at the end
+                              of the pasted content. Some commands (replace
+                              operator, zeta paste) use this method by
+                              default.
+
+*g:yanktools_repeat*            Default: 1
+
+                              Enable/disable vim-repeat integration.
+
+*g:yanktools_auto_stack_size*   Default: 10
+
+                              Max size for the automatic stack, before items
+                              start to be removed when another is being added.
+
+
+
+
+PLUGS                                                        *yanktools-plugs*
+==============================================================================
+
+Plugs and default mappings. Mappings assume |g:yanktools_main_key| to be 's'.
+
+---------------------------------------+----------+----------+~
+Plug                                   |  Normal  |  Visual  |~
+---------------------------------------+----------+----------+~
+<Plug>(Yank)                           |   sy     |   sy     |
+<Plug>(Cut)                            |   sd     |   sd     |
+<Plug>(Change)                         |   sc     |   sc     |
+<Plug>(Paste_p)                        |   p      |   p      |
+<Plug>(Paste_P)                        |   P      |          |
+<Plug>(PasteIndent_p)                  |   ]p     |          |
+<Plug>(PasteIndent_P)                  |   [p     |          |
+<Plug>(Replace)                        |   s      |          |
+<Plug>(Replace)_                       |   ss     |          |
+<Plug>(ReplaceLines)                   |   srr    |          |
+<Plug>(Replace=)                       |   sq     |          |
+<Plug>(Replace=)_                      |   sqq    |          |
+<Plug>(Duplicate)                      |   yd     |   <M-d>  |
+<Plug>(Duplicate)_                     |   ydd    |          |
+<Plug>(DuplicateLines)                 |   <M-d>  |          |
+                                       |          |          |
+<Plug>(SwapPasteNext)                  |   <M-p>  |          |
+<Plug>(SwapPastePrevious)              |   <M-P>  |          |
+<Plug>(YankNext)                       |   ]y     |          |
+<Plug>(YankPrevious)                   |   [y     |          |
+                                       |          |          |
+<Plug>(ZetaYank)                       |   yz     |   ZY     |
+<Plug>(ZetaDelete)                     |   dz     |   ZD     |
+<Plug>(ZetaPaste_p)                    |   zp     |   ZP     |
+<Plug>(ZetaPaste_P)                    |   zP     |          |
+                                       |          |          |
+<Plug>(YankSaveCurrent)                |   yus    |          |
+<Plug>(ConvertYankType)                |   yuc    |          |
+<Plug>(InteractivePaste)               |   yui    |          |
+<Plug>(ToggleAutoIndent)               |   yuai   |          |
+<Plug>(ClearYankStack)                 |   yuxy   |          |
+<Plug>(ClearZetaStack)                 |   yuxz   |          |
+<Plug>(Yanks)                          |   yuY    |          |
+<Plug>(ZetaYanks)                      |   yuZ    |          |
+<Plug>(YankViewNext)                   |   yup    |          |
+<Plug>(YanksRewind)                    |   yu0    |          |
+<Plug>(YanktoolsHelp)                  |   yu?    |          |
+
+
+
+
+EX COMMANDS                                                     *yanktools-ex*
+==============================================================================
+
+A few ex commands are defined:
+
+  :Yanks                  same as `yuY`
+  :ZetaYanks              same as `yuZ`
+  :ClearYankStack         same as `yuxy`
+  :ClearZetaStack         same as `yuxz`
+  :ToggleAutoIndent       same as `yuai`
+  :InteractivePaste       same as `yui`
+  :YanksPreview           same as `yuP`
+  :ToggleRecordYanks[!]   same as `yur`, verbose with <bang>
+
+
+
+PERSISTANCE                                            *yanktools-persistance*
+==============================================================================
+
+Add to the vimrc:
+>
+  let g:yanktools_persistance = 1
+
+Activate in the current session with:
+
+  :YanksPersistance
+
+But for this command to be effective at vim restart, you must also add
+|g:yanktools_persistance| to your vimrc. It is still useful if you want to
+start saving the stack in your current session.
+
+
+
+RELATED PROJECTS                                           *yanktools-related*
+==============================================================================
+
+vim-easyclip                    https://github.com/svermeulen/vim-easyclip
+vim-yankstack                   https://github.com/maxbrunsfeld/vim-yankstack
+nvim-miniyank                   https://github.com/bfredl/nvim-miniyank
+vim-yank-queue                  https://github.com/fvictorio/vim-yank-queue
+
+
+LICENSE                                                    *yanktools-license*
+==============================================================================
+
+License: Same terms as Vim itself (see |license|)
+
+
+==============================================================================
+vim:tw=78:cc=79:sw=2:ts=2:ft=help:norl:nowrap:expandtab
